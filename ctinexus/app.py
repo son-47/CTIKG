@@ -184,12 +184,13 @@ def run_cmd_pipeline(args):
 			try:
 				logger.info("Đang đẩy dữ liệu vào Neo4j...")
 				result_dict = json.loads(result)
-				
+				current_emb_model = args.ea_model or defaults.get("embedding_model")
 				# Lấy thông tin connection từ biến môi trường
 				loader = Neo4jLoader(
 					uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
 					user=os.getenv("NEO4J_USER", "neo4j"),
-					password=os.getenv("NEO4J_PASSWORD", "password")
+					password=os.getenv("NEO4J_PASSWORD", "password"),
+					embedding_model=current_emb_model
 				)
 				
 				# Xác định tên report để lưu nguồn gốc
