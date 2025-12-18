@@ -93,8 +93,8 @@ def create_argument_parser():
 
 def get_default_models_for_provider(provider):
 	defaults = {
-		"OpenAI": {"model": "o4-mini", "embedding_model": "text-embedding-3-large"},
-		"Gemini": {"model": "gemini-2.0-flash", "embedding_model": "gemini-embedding-001"},
+		"OpenAI": {"model": "o4-mini", "embedding_model": "text-embedding-3-small"},
+		"Gemini": {"model": "gemini-2.0-flash", "embedding_model": "gemini/gemini-embedding-001"},
 		"AWS": {"model": "anthropic.claude-3-5-sonnet", "embedding_model": "amazon.titan-embed-text-v2:0"},
 		"Ollama": {"model": "llama3.1:8b", "embedding_model": "nomic-embed-text"},
 	}

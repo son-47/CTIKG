@@ -1,5 +1,5 @@
 import os
-
+from litellm import completion, embedding
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -39,7 +39,7 @@ def check_api_key() -> bool:
 			"gemini-2.0-flash-lite": "Gemini 2.0 Flash-Lite — Smallest, most cost-effective ($0.075 • $0.30)",
 		}
 		EMBEDDING_MODELS["Gemini"] = {
-			"gemini-embedding-001": "Gemini Embedding — Text embeddings for relatedness ($0.15)",
+			"gemini/gemini-embedding-001": "Gemini Embedding — Text embeddings for relatedness ($0.15)",
 		}
 
 	if os.getenv("AWS_ACCESS_KEY_ID"):
@@ -116,3 +116,36 @@ def get_embedding_model_choices(provider):
 	if not provider or provider not in EMBEDDING_MODELS:
 		return []
 	return [(desc, key) for key, desc in EMBEDDING_MODELS[provider].items()]
+def get_embedding(text, model, api_key=None):
+    """
+    Wrapper để lấy vector embedding sử dụng litellm
+    """
+    if not text or not isinstance(text, str):
+        return None
+    try:
+        response = embedding(
+            model=model,
+            input=[text],
+            api_key=api_key
+        )
+        return response['data'][0]['embedding']
+    except Exception as e:
+        print(f"[Embedding Error] {e}")
+        return None
+
+def get_response(prompt, model, api_key=None, temperature=0):
+    """
+    Wrapper để gọi LLM sinh văn bản
+    """
+    try:
+        messages = [{"role": "user", "content": prompt}]
+        response = completion(
+            model=model,
+            messages=messages,
+            api_key=api_key,
+            temperature=temperature
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"[LLM Error] {e}")
+        return ""

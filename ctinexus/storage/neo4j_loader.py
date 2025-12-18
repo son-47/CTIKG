@@ -79,7 +79,7 @@ class Neo4jLoader:
             return None
 
     def _normalize_label(self, label):
-        if not label: return "Entity"
+        # if not label: return "Entity"
         return re.sub(r'[^a-zA-Z0-9]', '_', label)
 
     def _normalize_relation(self, relation_text):
