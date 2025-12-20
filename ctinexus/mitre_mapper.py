@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import pandas as pd
 import numpy as np
@@ -116,13 +117,29 @@ class MitreMapper:
         
         resp = get_response(prompt, self.llm_model, self.api_key)
         try:
-            # Lọc JSON từ phản hồi
-            import re
-            json_match = re.search(r'\{.*\}', resp, re.DOTALL)
-            if json_match:
-                data = json.loads(json_match.group())
+            # Fix 1: Thử parse trực tiếp nếu response là pure JSON
+            try:
+                data = json.loads(resp.strip())
                 if data.get('mitre_id') and data['mitre_id'] != "None":
                     return data
-        except:
-            pass
+            except json.JSONDecodeError:
+                pass
+            
+            # Fix 2: Tìm JSON block trong markdown code fence
+            match = re.search(r'```json\s*(\{[^}]+\})\s*```', resp, re.DOTALL)
+            if match:
+                data = json.loads(match.group(1))
+                if data.get('mitre_id') and data['mitre_id'] != "None":
+                    return data
+            
+            # Fix 3: Tìm JSON object độc lập (non-greedy)
+            match = re.search(r'\{[^{}]*"mitre_id"[^{}]*\}', resp)
+            if match:
+                data = json.loads(match.group())
+                if data.get('mitre_id') and data['mitre_id'] != "None":
+                    return data
+                    
+        except Exception as e:
+            logger.error(f"Failed to parse MITRE verification response: {e}")
+        
         return None

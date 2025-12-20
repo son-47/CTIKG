@@ -59,7 +59,7 @@ class Neo4jLoader:
                     CREATE VECTOR INDEX entity_embeddings IF NOT EXISTS
                     FOR (e:Entity) ON (e.embedding)
                     OPTIONS {indexConfig: {
-                     `vector.dimensions`: 3072,
+                     `vector.dimensions`: 1536,
                      `vector.similarity_function`: 'cosine'
                     }}
                 """)
@@ -211,3 +211,28 @@ class Neo4jLoader:
             
         except Exception as e:
             logger.error(f"❌ Neo4j Import Failed: {e}")
+            # Thêm vào trong class Neo4jLoader
+def ingest_mitre_mapping(self, source_entity, mitre_data):
+    """
+    Hàm này dùng để nối Entity (vd: Hacker A) với MITRE Technique (vd: T1059)
+    mitre_data format: {'mitre_id': 'Txxxx', 'confidence': 'High', ...}
+    """
+    if not mitre_data or not mitre_data.get('mitre_id'):
+        return
+
+    query = """
+    MATCH (e:Entity {name: $entity_name})
+    MERGE (t:MitreTechnique {id: $mitre_id})
+    ON CREATE SET t.url = 'https://attack.mitre.org/techniques/' + $mitre_id
+    MERGE (e)-[r:USES_TECHNIQUE]->(t)
+    SET r.confidence = $conf
+    """
+    try:
+        self.query(query, {
+            'entity_name': source_entity,
+            'mitre_id': mitre_data['mitre_id'],
+            'conf': mitre_data.get('confidence', 'Unknown')
+        })
+        print(f"   + Linked {source_entity} -> {mitre_data['mitre_id']}")
+    except Exception as e:
+        print(f"Error linking MITRE: {e}")

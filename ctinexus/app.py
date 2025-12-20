@@ -186,17 +186,20 @@ def run_cmd_pipeline(args):
 				result_dict = json.loads(result)
 				current_emb_model = args.ea_model or defaults.get("embedding_model")
 				# Lấy thông tin connection từ biến môi trường
-				loader = Neo4jLoader(
-					uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
-					user=os.getenv("NEO4J_USER", "neo4j"),
-					password=os.getenv("NEO4J_PASSWORD", "password"),
-					embedding_model=current_emb_model
-				)
+				 # Fix: Tạo dict config
+				neo4j_config = {
+					"neo4j_uri": os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+					"neo4j_user": os.getenv("NEO4J_USER", "neo4j"),
+					"neo4j_password": os.getenv("NEO4J_PASSWORD", "password"),
+					"neo4j_database": os.getenv("NEO4J_DATABASE", "neo4j"),
+					"embedding_model": current_emb_model
+				}
+				loader = Neo4jLoader(neo4j_config)
 				
 				# Xác định tên report để lưu nguồn gốc
 				rpt_name = args.input_file if args.input_file else "Manual_Input_Text"
 				
-				loader.ingest_report(result_dict, report_name=rpt_name)
+				loader.load_report_data(result_dict, report_name=rpt_name)
 				loader.close()
 				logger.info("✅ Đã cập nhật Knowledge Graph thành công!")
 				
