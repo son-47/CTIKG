@@ -3,6 +3,8 @@ import re
 import json
 import pandas as pd
 import numpy as np
+import logging
+logger = logging.getLogger(__name__)
 from scipy.spatial.distance import cosine
 from ctinexus.utils.model_utils import get_embedding, get_response
 

@@ -51,7 +51,7 @@ class Neo4jLoader:
             
             # 2. Đảm bảo Report ID là duy nhất
             session.run("CREATE CONSTRAINT report_id_unique IF NOT EXISTS FOR (r:Report) REQUIRE r.id IS UNIQUE")
-
+            session.run("CREATE CONSTRAINT mitre_id_unique IF NOT EXISTS FOR (m:MitreTechnique) REQUIRE m.id IS UNIQUE")
             # 3. Tạo Vector Index (Ví dụ dimension=3072 cho text-embedding-3-large)
             # Lưu ý: Cần điều chỉnh dimensions tùy theo model bạn dùng (OpenAI large=3072, small=1536)
             try:
@@ -101,7 +101,7 @@ class Neo4jLoader:
         full_text = report_json.get("text", "")
         # Tạo ID duy nhất cho report dựa trên nội dung (tránh load trùng lặp)
         report_id = hashlib.md5(full_text.encode('utf-8')).hexdigest()
-        report_title = full_text[:50].replace("\n", " ") + "..." # Lấy 50 ký tự đầu làm tiêu đề
+        # report_title = full_text[:50].replace("\n", " ") + "..." # Lấy 50 ký tự đầu làm tiêu đề
 
         # 2. Chuẩn bị dữ liệu Triplets (Cạnh)
         ea_triplets = report_json.get("EA", {}).get("aligned_triplets", [])
@@ -119,7 +119,8 @@ class Neo4jLoader:
             o_text = obj.get("entity_text")
             
             if not s_text or not o_text: return # Bỏ qua nếu thiếu dữ liệu
-
+            mitre_id = item.get("mitre_id")
+            if mitre_id == "None": mitre_id = None
             return {
                 "s_name": s_text,
                 "s_type": self._normalize_label(subj.get("mention_class")),
@@ -155,7 +156,7 @@ class Neo4jLoader:
         MERGE (r:Report {id: $report_id})
         ON CREATE SET 
             r.content = $full_text,
-            r.title = $report_title,
+            # r.title = $report_title,
             r.ingested_at = datetime()
         
         // 2. UNWIND: Kỹ thuật xử lý hàng loạt cực nhanh
@@ -194,10 +195,20 @@ class Neo4jLoader:
             WHEN rel.source_reports IS NULL THEN [$report_id]
             WHEN NOT $report_id IN rel.source_reports THEN rel.source_reports + $report_id
             ELSE rel.source_reports
-        END
+            END
         
         // (Tùy chọn) Chỉ tạo quan hệ MENTIONS từ Report tới Topic chính (nếu cần)
         // Ở đây ta bỏ qua để đồ thị đỡ rối, vì đã có source_reports trên cạnh.
+    // --- LOGIC MỚI: TẠO NODE MITRE TECHNIQUE (NẾU CÓ) ---
+        // Sử dụng FOREACH để mô phỏng "IF row.mitre_id IS NOT NULL"
+        FOREACH (ignoreMe IN CASE WHEN row.mitre_id IS NOT NULL THEN [1] ELSE [] END |
+            MERGE (mt:MitreTechnique {id: row.mitre_id})
+            ON CREATE SET mt.url = 'https://attack.mitre.org/techniques/' + row.mitre_id
+            
+            // Nối Subject (thường là Attacker/Malware) với Technique
+            MERGE (s)-[mr:USES_TECHNIQUE]->(mt)
+            SET mr.confidence = row.mitre_conf,
+                mr.from_report = $report_id    
         """
         
         try:
@@ -212,27 +223,27 @@ class Neo4jLoader:
         except Exception as e:
             logger.error(f"❌ Neo4j Import Failed: {e}")
             # Thêm vào trong class Neo4jLoader
-def ingest_mitre_mapping(self, source_entity, mitre_data):
-    """
-    Hàm này dùng để nối Entity (vd: Hacker A) với MITRE Technique (vd: T1059)
-    mitre_data format: {'mitre_id': 'Txxxx', 'confidence': 'High', ...}
-    """
-    if not mitre_data or not mitre_data.get('mitre_id'):
-        return
+    # def ingest_mitre_mapping(self, source_entity, mitre_data):
+    #     """
+    #     Hàm này dùng để nối Entity (vd: Hacker A) với MITRE Technique (vd: T1059)
+    #     mitre_data format: {'mitre_id': 'Txxxx', 'confidence': 'High', ...}
+    #     """
+    #     if not mitre_data or not mitre_data.get('mitre_id'):
+    #         return
 
-    query = """
-    MATCH (e:Entity {name: $entity_name})
-    MERGE (t:MitreTechnique {id: $mitre_id})
-    ON CREATE SET t.url = 'https://attack.mitre.org/techniques/' + $mitre_id
-    MERGE (e)-[r:USES_TECHNIQUE]->(t)
-    SET r.confidence = $conf
-    """
-    try:
-        self.query(query, {
-            'entity_name': source_entity,
-            'mitre_id': mitre_data['mitre_id'],
-            'conf': mitre_data.get('confidence', 'Unknown')
-        })
-        print(f"   + Linked {source_entity} -> {mitre_data['mitre_id']}")
-    except Exception as e:
-        print(f"Error linking MITRE: {e}")
+    #     query = """
+    #     MATCH (e:Entity {name: $entity_name})
+    #     MERGE (t:MitreTechnique {id: $mitre_id})
+    #     ON CREATE SET t.url = 'https://attack.mitre.org/techniques/' + $mitre_id
+    #     MERGE (e)-[r:USES_TECHNIQUE]->(t)
+    #     SET r.confidence = $conf
+    #     """
+    #     try:
+    #         self.query(query, {
+    #             'entity_name': source_entity,
+    #             'mitre_id': mitre_data['mitre_id'],
+    #             'conf': mitre_data.get('confidence', 'Unknown')
+    #         })
+    #         print(f"   + Linked {source_entity} -> {mitre_data['mitre_id']}")
+    #     except Exception as e:
+    #         print(f"Error linking MITRE: {e}")
