@@ -199,7 +199,7 @@ def run_cmd_pipeline(args):
 				# Xác định tên report để lưu nguồn gốc
 				rpt_name = args.input_file if args.input_file else "Manual_Input_Text"
 				
-				loader.load_report_data(result_dict, report_name=rpt_name)
+				loader.load_report_data(result_dict)
 				loader.close()
 				logger.info("✅ Đã cập nhật Knowledge Graph thành công!")
 				

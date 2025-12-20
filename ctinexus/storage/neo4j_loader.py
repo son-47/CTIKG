@@ -99,6 +99,7 @@ class Neo4jLoader:
         """
         # 1. Xử lý thông tin Report
         full_text = report_json.get("text", "")
+        print("Preparing report data for Neo4j ingestion...")
         # Tạo ID duy nhất cho report dựa trên nội dung (tránh load trùng lặp)
         report_id = hashlib.md5(full_text.encode('utf-8')).hexdigest()
         # report_title = full_text[:50].replace("\n", " ") + "..." # Lấy 50 ký tự đầu làm tiêu đề
@@ -216,7 +217,7 @@ class Neo4jLoader:
                 session.run(query, 
                             report_id=report_id, 
                             full_text=full_text, 
-                            report_title=report_title,
+                            # report_title=report_title,
                             batch=batch_data)
             logger.info("✅ Neo4j Import Successful!")
             

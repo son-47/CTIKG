@@ -122,7 +122,7 @@ class PostProcessor:
         
         # Lấy ngữ cảnh (context) từ result nếu có, hoặc để trống
         # Lưu ý: result['source_text'] cần được truyền từ pipeline vào nếu muốn chính xác cao
-        context_text = result.get("CTI", "") 
+        context_text = result.get("text", "") 
 
         for triple in self.js["EA"]["aligned_triplets"]:
             # Dữ liệu trong triple của bạn có dạng:
