@@ -11,15 +11,15 @@ logger = logging.getLogger(__name__)
 class Neo4jLoader:
     def __init__(self, config):
         # Lấy config
-        uri = config.get("neo4j_uri", "bolt://localhost:7687")
-        user = config.get("neo4j_user", "neo4j")
-        password = config.get("neo4j_password", "password")
-        self.database = config.get("neo4j_database", "neo4j")
+        uri = config.get("NEO4J_URI", "bolt://localhost:7687")
+        user = config.get("NEO4J_USER", "neo4j")
+        password = config.get("NEO4J_PASSWORD", "password")
+        self.database = config.get("NEO4J_DATABASE", "neo4j")
         
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
         
         # Cấu hình Embedding
-        self.embedding_model = config.get("embedding_model", "text-embedding-3-large")
+        self.embedding_model = config.get("embedding_model", "text-embedding-3-small")
         self.api_base = config.get("ollama_base_url", os.getenv("OLLAMA_BASE_URL"))
         self.api_key = config.get("openai_api_key", os.getenv("OPENAI_API_KEY"))
 
@@ -157,7 +157,6 @@ class Neo4jLoader:
         MERGE (r:Report {id: $report_id})
         ON CREATE SET 
             r.content = $full_text,
-            # r.title = $report_title,
             r.ingested_at = datetime()
         
         // 2. UNWIND: Kỹ thuật xử lý hàng loạt cực nhanh
@@ -209,7 +208,8 @@ class Neo4jLoader:
             // Nối Subject (thường là Attacker/Malware) với Technique
             MERGE (s)-[mr:USES_TECHNIQUE]->(mt)
             SET mr.confidence = row.mitre_conf,
-                mr.from_report = $report_id    
+                mr.from_report = $report_id
+        )   
         """
         
         try:
@@ -223,7 +223,7 @@ class Neo4jLoader:
             
         except Exception as e:
             logger.error(f"❌ Neo4j Import Failed: {e}")
-            # Thêm vào trong class Neo4jLoader
+   
     # def ingest_mitre_mapping(self, source_entity, mitre_data):
     #     """
     #     Hàm này dùng để nối Entity (vd: Hacker A) với MITRE Technique (vd: T1059)

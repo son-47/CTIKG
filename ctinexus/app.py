@@ -93,7 +93,7 @@ def create_argument_parser():
 
 def get_default_models_for_provider(provider):
 	defaults = {
-		"OpenAI": {"model": "o4-mini", "embedding_model": "text-embedding-3-small"},
+		"OpenAI": {"model": "gpt-4o-mini", "embedding_model": "text-embedding-3-small"},
 		"Gemini": {"model": "gemini-2.0-flash", "embedding_model": "gemini/gemini-embedding-001"},
 		"AWS": {"model": "anthropic.claude-3-5-sonnet", "embedding_model": "amazon.titan-embed-text-v2:0"},
 		"Ollama": {"model": "llama3.1:8b", "embedding_model": "nomic-embed-text"},
@@ -188,10 +188,10 @@ def run_cmd_pipeline(args):
 				# Lấy thông tin connection từ biến môi trường
 				 # Fix: Tạo dict config
 				neo4j_config = {
-					"neo4j_uri": os.getenv("NEO4J_URI", "bolt://localhost:7687"),
-					"neo4j_user": os.getenv("NEO4J_USER", "neo4j"),
-					"neo4j_password": os.getenv("NEO4J_PASSWORD", "password"),
-					"neo4j_database": os.getenv("NEO4J_DATABASE", "neo4j"),
+					"NEO4J_URI": os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+					"NEO4J_USER": os.getenv("NEO4J_USER", "neo4j"),
+					"NEO4J_PASSWORD": os.getenv("NEO4J_PASSWORD", "password"),
+					"NEO4J_DATABASE": os.getenv("NEO4J_DATABASE", "neo4j"),
 					"embedding_model": current_emb_model
 				}
 				loader = Neo4jLoader(neo4j_config)

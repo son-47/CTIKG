@@ -14,89 +14,84 @@ class MitreMapper:
         self.emb_model = config.get("embedding_model", "text-embedding-3-small")
         self.llm_model = config.get("llm_model", "gpt-3.5-turbo")
         self.api_key = config.get("openai_api_key") or os.getenv("OPENAI_API_KEY")
-        
+
         self.vector_db = []
         self.dataset_dir = dataset_dir
-        # ✅ Tách cache theo model để tránh conflict
         cache_name = f"mitre_cache_{self.emb_model.replace('/', '_')}.json"
         self.cache_file = os.path.join(dataset_dir, cache_name)
-        
+
         self._initialize_knowledge_base()
-    
+
     def _initialize_knowledge_base(self):
-        """Load MITRE knowledge base with safe caching"""
+        """Load MITRE knowledge base with safe caching (only ttp-desc-mappings.csv)."""
         # 1. Thử load cache
         if os.path.exists(self.cache_file):
             try:
                 logger.info(f"📦 Loading MITRE cache: {self.cache_file}")
-                with open(self.cache_file, 'r', encoding='utf-8') as f:
+                with open(self.cache_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                
-                # ✅ Validate cache structure
+
                 if not data or not isinstance(data, list):
                     raise ValueError("Invalid cache format")
-                
-                # ✅ Kiểm tra các trường bắt buộc
-                required_fields = {'vec', 'id', 'text'}
-                if not all(required_fields.issubset(d.keys()) for d in data[:5]):
+
+                required_fields = {"vec", "id", "text"}
+                if not all(required_fields.issubset(d.keys()) for d in data[: min(5, len(data))]):
                     raise ValueError("Missing required fields in cache")
-                
+
                 self.vector_db = [
-                    {
-                        'vector': np.array(d['vec']), 
-                        'id': d['id'], 
-                        'text': d['text']
-                    } 
-                    for d in data
+                    {"vector": np.array(d["vec"]), "id": d["id"], "text": d["text"]} for d in data
                 ]
                 logger.info(f"✅ Loaded {len(self.vector_db)} MITRE vectors from cache")
                 return
-                
             except Exception as e:
                 logger.warning(f"⚠️ Cache corrupted ({e}), rebuilding...")
-                # Xóa cache lỗi
                 try:
                     os.remove(self.cache_file)
-                except:
+                except Exception:
                     pass
 
-        # 2. Build from scratch
-        logger.info("⚙️ Building MITRE Knowledge Base (first run, ~2-3 minutes)...")
-        
-        # Load Descriptions
-        desc_path = os.path.join(self.dataset_dir, "datasets/ttp-desc-mappings.csv")
-        self._load_csv(desc_path, col_id='technique_id', col_text='description', sep='\t')
-        
-        # Load Procedures (critical!)
-        proc_path = os.path.join(self.dataset_dir, "datasets/procedures/procedure_train.tsv")
-        self._load_csv(proc_path, col_id='label', col_text='text', sep='\t')
+        # 2. Build from scratch (CHỈ embed ttp-desc-mappings.csv)
+        logger.info("⚙️ Building MITRE Knowledge Base from ttp-desc-mappings.csv (first run)...")
 
-        # 3. Save cache with error handling
+        # Dataset header thường là: "ttp" \t "description"
+        desc_path = os.path.join(self.dataset_dir, "datasets/ttp-desc-mappings.csv")
+        self._load_csv(
+            desc_path,
+            col_id="ttp",        # hoặc 'technique_id' nếu file của bạn dùng header này
+            col_text="description",
+            sep="\t",            # đổi thành ',' nếu file là CSV chuẩn
+            id_is_list=False,
+        )
+
+
+        # 3. Save cache
         if self.vector_db:
             try:
                 cache_data = [
-                    {
-                        'vec': d['vector'].tolist(),
-                        'id': d['id'],
-                        'text': d['text']
-                    } 
+                    {"vec": d["vector"].tolist(), "id": d["id"], "text": d["text"]}
                     for d in self.vector_db
                 ]
-                
-                # ✅ Atomic write: ghi vào file tạm trước
-                temp_file = self.cache_file + '.tmp'
-                with open(temp_file, 'w', encoding='utf-8') as f:
+                temp_file = self.cache_file + ".tmp"
+                with open(temp_file, "w", encoding="utf-8") as f:
                     json.dump(cache_data, f, indent=2)
-                
-                # ✅ Chỉ rename khi ghi thành công
                 os.replace(temp_file, self.cache_file)
-                logger.info(f"✅ MITRE cache saved: {self.cache_file} ({len(cache_data)} vectors)")
-                
+                logger.info(
+                    f"✅ MITRE cache saved: {self.cache_file} ({len(cache_data)} vectors)"
+                )
             except Exception as e:
                 logger.error(f"❌ Failed to save cache: {e}")
-    
-    def _load_csv(self, path, col_id, col_text, sep=','):
-        """Load and embed CSV data with progress tracking"""
+
+    def _load_csv(self, path, col_id, col_text, sep=',', id_is_list=False):
+        """Load and embed CSV/TSV data with progress tracking.
+
+        Args:
+            path: File path.
+            col_id: Column containing MITRE IDs (or list of IDs when id_is_list=True).
+            col_text: Column containing free-text description/procedure.
+            sep: Column separator.
+            id_is_list: When True, "col_id" holds a Python-list-like string and
+                        the first element will be used as the technique ID.
+        """
         if not os.path.exists(path):
             logger.error(f"❌ Dataset not found: {path}")
             return
@@ -108,22 +103,39 @@ class MitreMapper:
             
             embedded_count = 0
             for idx, row in df.iterrows():
-                text = str(row.get(col_text, ''))
-                tid = str(row.get(col_id, ''))
+                text = str(row.get(col_text, '')).strip()
+                raw_tid = row.get(col_id, '')
+
+                # Parse MITRE technique ID
+                tid = ''
+                if id_is_list:
+                    # labels column is a list-like string, e.g. "['T1001', 'T1132.001']"
+                    try:
+                        import ast
+                        parsed = ast.literal_eval(str(raw_tid))
+                        if isinstance(parsed, (list, tuple)) and parsed:
+                            tid = str(parsed[0]).strip()
+                    except Exception:
+                        tid = ''
+                else:
+                    tid = str(raw_tid).strip().strip('"')
+
+                # Normalise ID to upper-case, dataset often uses lowercase like "t1055.011"
+                tid = tid.upper()
                 
                 if len(text) > 5 and tid.startswith('T'):
                     vec = get_embedding(text, self.emb_model, self.api_key)
-                    if vec:
+                    if vec is not None:
                         self.vector_db.append({
                             "vector": np.array(vec),
                             "id": tid,
-                            "text": text[:200]  # Giữ nguyên
+                            "text": text[:200]
                         })
                         embedded_count += 1
                 
                 # ✅ Progress indicator
                 if (idx + 1) % 50 == 0:
-                    logger.info(f"      [{idx+1}/{total}] embedded...")
+                    logger.info(f"      [{idx+1}/{total}] embedded (✅ {embedded_count} successful)...")
             
             logger.info(f"   ✅ Successfully embedded {embedded_count}/{total} entries")
             
