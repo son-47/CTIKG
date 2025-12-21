@@ -1,0 +1,349 @@
+{
+    "text": "Attackers heavily focused on acquiring military and security intelligence in order to support invading forces. The Shuckworm espionage group is continuing to mount multiple cyber attacks against Ukraine, with recent targets including security services, military, and government organizations.",
+    "IE": {
+        "triplets": [
+            {
+                "subject": "Shuckworm espionage group",
+                "relation": "is mounting",
+                "object": "cyber attacks against Ukraine"
+            },
+            {
+                "subject": "cyber attacks",
+                "relation": "target",
+                "object": "security services"
+            },
+            {
+                "subject": "cyber attacks",
+                "relation": "target",
+                "object": "military"
+            },
+            {
+                "subject": "cyber attacks",
+                "relation": "target",
+                "object": "government organizations"
+            },
+            {
+                "subject": "Attackers",
+                "relation": "focused on acquiring",
+                "object": "military and security intelligence"
+            }
+        ],
+        "triples_count": 5,
+        "model_usage": {
+            "model": "gpt-4o-mini",
+            "input": {
+                "tokens": 1834,
+                "cost": 0.00027509999999999996
+            },
+            "output": {
+                "tokens": 92,
+                "cost": 5.52e-05
+            },
+            "total": {
+                "tokens": 1926,
+                "cost": 0.00033029999999999995
+            }
+        },
+        "response_time": 3.2828269004821777,
+        "Prompt": {
+            "prompt_template": "ie.jinja",
+            "demo_retriever": "kNN",
+            "demos": [
+                [
+                    "internet-explorer-0-day-exploited-by-north-korean-actor-apt37.json",
+                    0.18670198458041506
+                ],
+                [
+                    "iphone-users-urged-to-update-to-patch-2-zero-days-under-attack.json",
+                    0.23629942589170339
+                ],
+                [
+                    "pegasus-forcedentry-protection.json",
+                    0.2800461016217905
+                ]
+            ],
+            "demo_number": 3,
+            "permutation": "asc"
+        }
+    },
+    "ET": {
+        "typed_triplets": [
+            {
+                "subject": {
+                    "text": "Shuckworm espionage group",
+                    "class": "Attacker"
+                },
+                "relation": "is mounting",
+                "object": {
+                    "text": "cyber attacks against Ukraine",
+                    "class": "Event"
+                }
+            },
+            {
+                "subject": {
+                    "text": "cyber attacks",
+                    "class": "Event"
+                },
+                "relation": "target",
+                "object": {
+                    "text": "security services",
+                    "class": "Organization"
+                }
+            },
+            {
+                "subject": {
+                    "text": "cyber attacks",
+                    "class": "Event"
+                },
+                "relation": "target",
+                "object": {
+                    "text": "military",
+                    "class": "Organization"
+                }
+            },
+            {
+                "subject": {
+                    "text": "cyber attacks",
+                    "class": "Event"
+                },
+                "relation": "target",
+                "object": {
+                    "text": "government organizations",
+                    "class": "Organization"
+                }
+            },
+            {
+                "subject": {
+                    "text": "Attackers",
+                    "class": "Attacker"
+                },
+                "relation": "focused on acquiring",
+                "object": {
+                    "text": "military and security intelligence",
+                    "class": "Information"
+                }
+            }
+        ],
+        "response_time": 5.501565933227539,
+        "model_usage": {
+            "model": "gpt-4o-mini",
+            "input": {
+                "tokens": 1149,
+                "cost": 0.00017235
+            },
+            "output": {
+                "tokens": 305,
+                "cost": 0.000183
+            },
+            "total": {
+                "tokens": 1454,
+                "cost": 0.00035535
+            }
+        }
+    },
+    "EA": {
+        "aligned_triplets": [
+            {
+                "subject": {
+                    "mention_id": 0,
+                    "mention_text": "Shuckworm espionage group",
+                    "mention_class": "Attacker",
+                    "entity_id": 0,
+                    "mention_merged": [],
+                    "entity_text": "Shuckworm espionage group"
+                },
+                "relation": "is mounting",
+                "object": {
+                    "mention_id": 1,
+                    "mention_text": "cyber attacks against Ukraine",
+                    "mention_class": "Event",
+                    "entity_id": 2,
+                    "mention_merged": [
+                        "cyber attacks"
+                    ],
+                    "entity_text": "cyber attacks"
+                },
+                "mitre_id": null
+            },
+            {
+                "subject": {
+                    "mention_id": 2,
+                    "mention_text": "cyber attacks",
+                    "mention_class": "Event",
+                    "entity_id": 2,
+                    "mention_merged": [
+                        "cyber attacks against Ukraine"
+                    ],
+                    "entity_text": "cyber attacks"
+                },
+                "relation": "target",
+                "object": {
+                    "mention_id": 3,
+                    "mention_text": "security services",
+                    "mention_class": "Organization",
+                    "entity_id": 3,
+                    "mention_merged": [],
+                    "entity_text": "security services"
+                },
+                "mitre_id": "T1499.002",
+                "mitre_confidence": "High"
+            },
+            {
+                "subject": {
+                    "mention_id": 2,
+                    "mention_text": "cyber attacks",
+                    "mention_class": "Event",
+                    "entity_id": 2,
+                    "mention_merged": [
+                        "cyber attacks against Ukraine"
+                    ],
+                    "entity_text": "cyber attacks"
+                },
+                "relation": "target",
+                "object": {
+                    "mention_id": 4,
+                    "mention_text": "military",
+                    "mention_class": "Organization",
+                    "entity_id": 4,
+                    "mention_merged": [],
+                    "entity_text": "military"
+                },
+                "mitre_id": "T1190",
+                "mitre_confidence": "High"
+            },
+            {
+                "subject": {
+                    "mention_id": 2,
+                    "mention_text": "cyber attacks",
+                    "mention_class": "Event",
+                    "entity_id": 2,
+                    "mention_merged": [
+                        "cyber attacks against Ukraine"
+                    ],
+                    "entity_text": "cyber attacks"
+                },
+                "relation": "target",
+                "object": {
+                    "mention_id": 5,
+                    "mention_text": "government organizations",
+                    "mention_class": "Organization",
+                    "entity_id": 5,
+                    "mention_merged": [],
+                    "entity_text": "government organizations"
+                },
+                "mitre_id": "T1190",
+                "mitre_confidence": "High"
+            },
+            {
+                "subject": {
+                    "mention_id": 6,
+                    "mention_text": "Attackers",
+                    "mention_class": "Attacker",
+                    "entity_id": 1,
+                    "mention_merged": [],
+                    "entity_text": "Attackers"
+                },
+                "relation": "focused on acquiring",
+                "object": {
+                    "mention_id": 7,
+                    "mention_text": "military and security intelligence",
+                    "mention_class": "Information",
+                    "entity_id": 6,
+                    "mention_merged": [],
+                    "entity_text": "military and security intelligence"
+                },
+                "mitre_id": "T1597",
+                "mitre_confidence": "High"
+            }
+        ],
+        "mentions_num": 8,
+        "entity_num": 7,
+        "model_usage": {
+            "model": "gpt-4.1",
+            "input": {
+                "tokens": 26,
+                "cost": 5.2e-05
+            },
+            "output": {
+                "tokens": 0,
+                "cost": 0.0
+            },
+            "total": {
+                "tokens": 26,
+                "cost": 5.2e-05
+            }
+        },
+        "response_time": 1.1039350032806396
+    },
+    "LP": {
+        "predicted_links": [
+            {
+                "subject": {
+                    "entity_id": 1,
+                    "mention_text": "Attackers"
+                },
+                "relation": "conduct",
+                "object": {
+                    "mention_id": 1,
+                    "mention_text": "cyber attacks against Ukraine",
+                    "mention_class": "Event",
+                    "entity_id": 2,
+                    "mention_merged": [
+                        "cyber attacks"
+                    ],
+                    "entity_text": "cyber attacks"
+                }
+            }
+        ],
+        "response_time": 1.014883279800415,
+        "model_usage": {
+            "model": "gpt-4o-mini",
+            "input": {
+                "tokens": 991,
+                "cost": 0.00014864999999999998
+            },
+            "output": {
+                "tokens": 36,
+                "cost": 2.16e-05
+            },
+            "total": {
+                "tokens": 1027,
+                "cost": 0.00017025
+            }
+        },
+        "topic_node": {
+            "mention_id": 1,
+            "mention_text": "cyber attacks against Ukraine",
+            "mention_class": "Event",
+            "entity_id": 2,
+            "mention_merged": [
+                "cyber attacks"
+            ],
+            "entity_text": "cyber attacks"
+        },
+        "main_nodes": [
+            {
+                "mention_id": 6,
+                "mention_text": "Attackers",
+                "mention_class": "Attacker",
+                "entity_id": 1,
+                "mention_merged": [],
+                "entity_text": "Attackers"
+            }
+        ],
+        "subgraphs": [
+            [
+                0,
+                2,
+                3,
+                4,
+                5
+            ],
+            [
+                1,
+                6
+            ]
+        ],
+        "subgraph_num": 2
+    }
+}

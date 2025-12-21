@@ -134,23 +134,24 @@ class PostProcessor:
 
             # Chỉ map nếu có relation (hành động)
             if relation_text:
-                # Gọi MitreMapper
                 mitre_result = self.mitre_mapper.map_action(
                     subj_text, relation_text, obj_text, context=context_text
                 )
 
                 if mitre_result:
-                    print(f"   🎯 Mapped: '{relation_text}' -> {mitre_result['mitre_id']}")
-                    # Gán trực tiếp vào triple để lưu xuống DB sau này
-                    triple["mitre_id"] = mitre_result['mitre_id']
-                    triple["mitre_confidence"] = mitre_result['confidence']
-                    
-                    # (Tùy chọn) Cập nhật lại tên quan hệ thành ID kỹ thuật nếu muốn
-                    # triple["relation"] = f"{relation_text} ({mitre_result['mitre_id']})"
+                    mid = (mitre_result.get("mitre_id") or "").strip()
+                    conf = (mitre_result.get("confidence") or "").strip()
+
+                    # Chỉ nhận khi confidence High để giảm “spam technique”
+                    if mid and mid.upper() != "NONE" and conf.lower() == "high":
+                        triple["mitre_id"] = mid
+                        triple["mitre_confidence"] = conf
+                    else:
+                        triple["mitre_id"] = None
+                        triple["mitre_confidence"] = conf or None
                 else:
                     triple["mitre_id"] = None
         return self.js
-
 
 def preprocessor(result: dict) -> dict:
     # Dictionary to track mention_text to mention_id mapping

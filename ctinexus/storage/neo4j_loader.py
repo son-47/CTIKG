@@ -1,4 +1,3 @@
-
 import logging
 import re
 import os
@@ -66,24 +65,6 @@ class Neo4jLoader:
             except Exception as e:
                 logger.warning(f"⚠️ Vector Index Creation skipped/failed: {e}")
 
-    def _get_embedding(self, text):
-        if not text: return None
-        try:
-            # Xử lý prefix model cho litellm
-            model_name = self.embedding_model
-            if "llama" in model_name and not model_name.startswith("ollama/"):
-                model_name = f"ollama/{model_name}"
-
-            response = litellm.embedding(
-                model=model_name,
-                input=[text],
-                api_base=self.api_base,
-                api_key=self.api_key
-            )
-            return response["data"][0]["embedding"]
-        except Exception as e:
-            logger.error(f"Embedding failed for '{text[:20]}...': {e}")
-            return []
 
     def _normalize_label(self, label):
         """Chuyển 'Indicator:IP Address' -> 'Indicator_IP_Address' để làm Label hợp lệ"""
@@ -93,158 +74,215 @@ class Neo4jLoader:
         clean = re.sub(r'[^a-zA-Z0-9]', '_', label)
         return clean
 
+    def _get_embedding(self, text):
+        """Trả về list[float] để Neo4j lưu dạng array; trả None nếu lỗi."""
+        if not text or not self.embedding_model:
+            return None
+        try:
+            model_name = self.embedding_model
+            if "llama" in model_name and not model_name.startswith("ollama/"):
+                model_name = f"ollama/{model_name}"
+
+            resp = litellm.embedding(
+                model=model_name,
+                input=[text],
+                api_base=self.api_base,
+                api_key=self.api_key,
+            )
+            emb = resp["data"][0]["embedding"]
+            return [float(x) for x in emb]
+        except Exception as e:
+            logger.error(f"Embedding failed for '{text[:30]}...': {e}")
+            return None
+
     def load_report_data(self, report_json):
-        """
-        Hàm chính để load dữ liệu. Sử dụng Batch Processing để tối ưu tốc độ.
-        """
-        # 1. Xử lý thông tin Report
+        """Đẩy cả EA + LP + Topic vào Neo4j, kèm MITRE mapping."""
         full_text = report_json.get("text", "")
-        print("Preparing report data for Neo4j ingestion...")
-        # Tạo ID duy nhất cho report dựa trên nội dung (tránh load trùng lặp)
-        report_id = hashlib.md5(full_text.encode('utf-8')).hexdigest()
-        # report_title = full_text[:50].replace("\n", " ") + "..." # Lấy 50 ký tự đầu làm tiêu đề
+        report_id = hashlib.md5(full_text.encode("utf-8")).hexdigest()
 
-        # 2. Chuẩn bị dữ liệu Triplets (Cạnh)
         ea_triplets = report_json.get("EA", {}).get("aligned_triplets", [])
-        lp_links = report_json.get("LP", {}).get("predicted_links", [])
+        lp_data = report_json.get("LP", {}) or {}
+        lp_links = lp_data.get("predicted_links", [])
+        topic_node = lp_data.get("topic_node") or {}
 
-        # Gộp cả 2 nguồn, đánh dấu loại
-        batch_data = []
-        
-        # Helper function để xử lý từng item
-        def prepare_item(item, is_predicted):
-            subj = item.get("subject", {})
-            obj = item.get("object", {})
-            
-            s_text = subj.get("entity_text")
-            o_text = obj.get("entity_text")
-            
-            if not s_text or not o_text: return # Bỏ qua nếu thiếu dữ liệu
-            mitre_id = item.get("mitre_id")
-            if mitre_id == "None": mitre_id = None
+        def get_clean_id(text: str) -> str:
+            return re.sub(r"[^a-zA-Z0-9]", "_", text.strip().lower())
+
+        def norm_label(label: str) -> str:
+            if not label or label == "default":
+                return "Entity"
+            return re.sub(r"[^a-zA-Z0-9]", "_", str(label))
+
+        def clean_mitre_id(v):
+            if not v:
+                return None
+            v_str = str(v).strip()
+            if not v_str or v_str.upper() == "NONE":
+                return None
+            return v_str.upper()
+
+        def to_confidence(v):
+            """mitre_mapper trả High/Medium/Low; normalize về float."""
+            if v is None:
+                return None
+            if isinstance(v, (int, float)):
+                return float(v)
+            s = str(v).strip().lower()
+            if s in ("high", "h"):
+                return 0.9
+            if s in ("medium", "med", "m"):
+                return 0.6
+            if s in ("low", "l"):
+                return 0.3
+            try:
+                return float(s)
+            except Exception:
+                return None
+
+        # Build index từ EA theo entity_id để enrich LP nodes (LP.object thường thiếu class/text)
+        entity_index = {}
+        for t in ea_triplets:
+            for side in ("subject", "object"):
+                n = (t.get(side) or {})
+                eid = n.get("entity_id")
+                if eid is not None and eid not in entity_index:
+                    entity_index[eid] = n
+
+        def resolve_node(raw: dict):
+            raw = raw or {}
+            eid = raw.get("entity_id")
+            ref = entity_index.get(eid) if eid is not None else None
+
+            # Ưu tiên entity_text từ EA index để đảm bảo cùng ID/label
+            text = None
+            if ref:
+                text = ref.get("entity_text") or ref.get("mention_text")
+            text = text or raw.get("entity_text") or raw.get("mention_text")
+
+            cls = raw.get("mention_class") or (ref.get("mention_class") if ref else None)
+            cls = norm_label(cls)
+
+            return text, cls
+
+        batch = []
+
+        def prepare_triplet(item, is_predicted: bool = False):
+            subj = item.get("subject", {}) or {}
+            obj = item.get("object", {}) or {}
+
+            s_text, s_type = resolve_node(subj)
+            o_text, o_type = resolve_node(obj)
+            if not s_text or not o_text:
+                return None
+
+            mitre_id = clean_mitre_id(item.get("mitre_id"))
+            mitre_conf = to_confidence(item.get("mitre_confidence"))
+
             return {
-                "s_name": s_text,
-                "s_type": self._normalize_label(subj.get("mention_class")),
-                "s_emb": self._get_embedding(s_text), # Gọi embedding (có thể chậm, nên cache nếu được)
-                
-                "o_name": o_text,
-                "o_type": self._normalize_label(obj.get("mention_class")),
-                "o_emb": self._get_embedding(o_text),
-                
-                "relation": self._normalize_label(item.get("relation", "RELATED_TO")).upper(),
-                "mitre_id": item.get("mitre_id"), # Nếu đã chạy qua mapper
-                "is_predicted": is_predicted
+                "s_id": get_clean_id(s_text),
+                "s_name": s_text.strip(),
+                "s_type": s_type,
+
+                "o_id": get_clean_id(o_text),
+                "o_name": o_text.strip(),
+                "o_type": o_type,
+
+                "relation": norm_label(item.get("relation", "RELATED_TO")).upper(),
+                "mitre_id": mitre_id,
+                "mitre_conf": mitre_conf,
+                "is_predicted": bool(is_predicted),
             }
 
-        logger.info("Processing embeddings and preparing batch...")
         for t in ea_triplets:
-            data = prepare_item(t, is_predicted=False)
-            if data: batch_data.append(data)
-            
-        for t in lp_links:
-            data = prepare_item(t, is_predicted=True)
-            if data: batch_data.append(data)
+            d = prepare_triplet(t, is_predicted=False)
+            if d:
+                batch.append(d)
 
-        if not batch_data:
-            logger.warning("No valid triplets found to insert.")
+        for t in lp_links:
+            d = prepare_triplet(t, is_predicted=True)
+            if d:
+                batch.append(d)
+
+        # Topic node (Report -> Topic) (không set embedding)
+        topic = None
+        if topic_node:
+            t_text = topic_node.get("entity_text") or topic_node.get("mention_text")
+            t_cls = topic_node.get("mention_class")
+            if t_text:
+                topic = {
+                    "id": get_clean_id(t_text),
+                    "name": t_text.strip(),
+                    "type": norm_label(t_cls),
+                }
+
+        if not batch and not topic:
+            logger.warning("⚠️ No data found to insert.")
             return
 
-        # 3. Thực thi Cypher (Batch Insert)
-        logger.info(f"Inserting {len(batch_data)} elements into Neo4j for report {report_id}...")
-        
-        query = """
-        // 1. Tạo Node Report (Lưu full text nội dung)
+        query_main = """
         MERGE (r:Report {id: $report_id})
-        ON CREATE SET 
+        ON CREATE SET
             r.content = $full_text,
             r.ingested_at = datetime()
-        
-        // 2. UNWIND: Kỹ thuật xử lý hàng loạt cực nhanh
+
         WITH r
         UNWIND $batch AS row
-        
-        // --- Xử lý Subject ---
-        // Dùng MERGE theo tên -> Giải quyết việc ID bị reset ở mỗi report
-        MERGE (s:Entity {name: row.s_name})
-        ON CREATE SET s.embedding = row.s_emb
-        // Sử dụng APOC để gán label động (Flexible Node Types)
-        // Luôn giữ label :Entity, thêm label class cụ thể (VD: :Malware)
-        with r, s, row
-        CALL apoc.create.addLabels(s, [row.s_type]) YIELD node as s_node
-        
-        // --- Xử lý Object ---
-        MERGE (o:Entity {name: row.o_name})
-        ON CREATE SET o.embedding = row.o_emb
-        with r, s, o, row
-        CALL apoc.create.addLabels(o, [row.o_type]) YIELD node as o_node
-        
-        // --- Xử lý Quan hệ & Provenance (Nguồn gốc) ---
-        // Sử dụng APOC để tạo quan hệ động (Dynamic Relationship Type)
-        // Thay vì fix cứng [:ACTION], ta dùng row.relation (VD: [:TARGETS], [:USES])
-        CALL apoc.merge.relationship(s, row.relation, {}, {}, o, {}) YIELD rel
-        
-        // Cập nhật thuộc tính trên cạnh
-        SET rel.mitre_id = row.mitre_id,
-            rel.last_updated = datetime()
-        
-        // --- PROVENANCE MAPPING ---
-        // Đây là cách giải quyết vấn đề "quan hệ quá nhiều"
-        // Thay vì tạo cạnh (Report)->(Entity), ta lưu Report ID vào một mảng trên cạnh (Relation)
-        // Nghĩa là: "Mối quan hệ này được xác nhận bởi các báo cáo nào?"
-        SET rel.source_reports = CASE 
-            WHEN rel.source_reports IS NULL THEN [$report_id]
-            WHEN NOT $report_id IN rel.source_reports THEN rel.source_reports + $report_id
-            ELSE rel.source_reports
-            END
-        
-        // (Tùy chọn) Chỉ tạo quan hệ MENTIONS từ Report tới Topic chính (nếu cần)
-        // Ở đây ta bỏ qua để đồ thị đỡ rối, vì đã có source_reports trên cạnh.
-    // --- LOGIC MỚI: TẠO NODE MITRE TECHNIQUE (NẾU CÓ) ---
-        // Sử dụng FOREACH để mô phỏng "IF row.mitre_id IS NOT NULL"
-        FOREACH (ignoreMe IN CASE WHEN row.mitre_id IS NOT NULL THEN [1] ELSE [] END |
+
+        // MERGE theo id KHÔNG kèm label => tránh duplicate toàn cục
+        MERGE (s {id: row.s_id})
+        ON CREATE SET s.name = row.s_name
+        ON MATCH  SET s.name = coalesce(s.name, row.s_name)
+        WITH r, row, s
+        CALL apoc.create.setLabels(s, [row.s_type]) YIELD node AS s2
+
+        MERGE (o {id: row.o_id})
+        ON CREATE SET o.name = row.o_name
+        ON MATCH  SET o.name = coalesce(o.name, row.o_name)
+        WITH r, row, s2, o
+        CALL apoc.create.setLabels(o, [row.o_type]) YIELD node AS o2
+
+        CALL apoc.merge.relationship(s2, row.relation, {}, {}, o2, {}) YIELD rel
+        SET rel.mitre_id     = row.mitre_id,
+            rel.last_updated = datetime(),
+            rel.is_predicted = row.is_predicted,
+            rel.source_reports =
+                CASE
+                    WHEN rel.source_reports IS NULL THEN [$report_id]
+                    WHEN NOT $report_id IN rel.source_reports THEN rel.source_reports + $report_id
+                    ELSE rel.source_reports
+                END
+
+        FOREACH (_ IN CASE WHEN row.mitre_id IS NULL THEN [] ELSE [1] END |
             MERGE (mt:MitreTechnique {id: row.mitre_id})
             ON CREATE SET mt.url = 'https://attack.mitre.org/techniques/' + row.mitre_id
-            
-            // Nối Subject (thường là Attacker/Malware) với Technique
-            MERGE (s)-[mr:USES_TECHNIQUE]->(mt)
-            SET mr.confidence = row.mitre_conf,
+            MERGE (s2)-[mr:USES_TECHNIQUE]->(mt)
+            SET mr.confidence = coalesce(row.mitre_conf, 0.5),
                 mr.from_report = $report_id
-        )   
+        )
         """
-        
+
+        query_topic = """
+        MATCH (r:Report {id: $report_id})
+        WITH r, $topic AS topic
+        WHERE topic IS NOT NULL
+        MERGE (t {id: topic.id})
+        ON CREATE SET t.name = topic.name
+        ON MATCH  SET t.name = coalesce(t.name, topic.name)
+        WITH r, t, topic
+        CALL apoc.create.setLabels(t, [topic.type]) YIELD node AS t2
+        MERGE (r)-[:DISCUSSES_TOPIC]->(t2)
+        """
+
         try:
             with self.driver.session(database=self.database) as session:
-                session.run(query, 
-                            report_id=report_id, 
-                            full_text=full_text, 
-                            # report_title=report_title,
-                            batch=batch_data)
+                session.run(query_main, report_id=report_id, full_text=full_text, batch=batch)
+                if topic:
+                    session.run(query_topic, report_id=report_id, topic=topic)
             logger.info("✅ Neo4j Import Successful!")
-            
         except Exception as e:
             logger.error(f"❌ Neo4j Import Failed: {e}")
-   
-    # def ingest_mitre_mapping(self, source_entity, mitre_data):
-    #     """
-    #     Hàm này dùng để nối Entity (vd: Hacker A) với MITRE Technique (vd: T1059)
-    #     mitre_data format: {'mitre_id': 'Txxxx', 'confidence': 'High', ...}
-    #     """
-    #     if not mitre_data or not mitre_data.get('mitre_id'):
-    #         return
+            raise
+            
 
-    #     query = """
-    #     MATCH (e:Entity {name: $entity_name})
-    #     MERGE (t:MitreTechnique {id: $mitre_id})
-    #     ON CREATE SET t.url = 'https://attack.mitre.org/techniques/' + $mitre_id
-    #     MERGE (e)-[r:USES_TECHNIQUE]->(t)
-    #     SET r.confidence = $conf
-    #     """
-    #     try:
-    #         self.query(query, {
-    #             'entity_name': source_entity,
-    #             'mitre_id': mitre_data['mitre_id'],
-    #             'conf': mitre_data.get('confidence', 'Unknown')
-    #         })
-    #         print(f"   + Linked {source_entity} -> {mitre_data['mitre_id']}")
-    #     except Exception as e:
-    #         print(f"Error linking MITRE: {e}")
+   
+   

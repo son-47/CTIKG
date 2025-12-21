@@ -143,31 +143,36 @@ class MitreMapper:
             logger.error(f"❌ Error loading {path}: {e}")
 
     def map_action(self, subject, action, obj, context=""):
-        """
-        Hàm chính để map hành vi sang MITRE ID
-        """
-        if not action: return None
-        
-        # Tạo câu query
+        if not action:
+            return None
+
         query = f"{subject} {action} {obj}"
         query_vec = get_embedding(query, self.emb_model, self.api_key)
-        
-        if query_vec is None: return None
+        if query_vec is None:
+            return None
 
-        # Giai đoạn 1: Retrieve (Lấy top 5 vector giống nhất)
-        candidates = []
+        # Tuneable knobs (giảm noise)
+        try:
+            top_k = int(self.config.get("mitre_top_k", 3))
+        except Exception:
+            top_k = 3
+        try:
+            min_score = float(self.config.get("mitre_min_score", 0.25))
+        except Exception:
+            min_score = 0.25
+
+        scored = []
         for item in self.vector_db:
-            # Cosine similarity
-            score = 1 - cosine(query_vec, item['vector'])
-            if score > 0.72: # Ngưỡng lọc
-                candidates.append((score, item))
-        
-        candidates.sort(key=lambda x: x[0], reverse=True)
-        top_candidates = candidates[:5]
-        
-        if not top_candidates: return None
+            score = 1 - cosine(query_vec, item["vector"])
+            scored.append((score, item))
 
-        # Giai đoạn 2: Rerank (Dùng LLM kiểm tra)
+        scored.sort(key=lambda x: x[0], reverse=True)
+        top_candidates = scored[:top_k]
+
+        # Nếu top-1 quá thấp -> bỏ luôn, tránh LLM “gán bừa”
+        if not top_candidates or top_candidates[0][0] < min_score:
+            return None
+
         return self._llm_verify(query, context, top_candidates)
 
     def _llm_verify(self, query, context, candidates):
